@@ -40,6 +40,10 @@
 
 など
 
+出力例
+
+![](https://github.com/marutaku/docker-fastapi-mysql-app/raw/master/docs/images/version.png)
+
 ### 2. コマンドで確認( *$は入力しなくて良い* )
 
 ```bash
