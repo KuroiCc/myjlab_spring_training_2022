@@ -59,3 +59,13 @@ $ docker-compose up
 2. 下記の画面が表示されれば完了
 
 ![20220219123052](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220219123052.png)
+
+## 開発の進め方
+
+- 主に`chat_app/`ディレクトリの中にファイルを追加して開発を進めていきます。
+
+- バックエンドのURLは
+   - `http://localhost:8080`
+
+- フロントエンドURLは
+   - `http://localhost:？？？`
