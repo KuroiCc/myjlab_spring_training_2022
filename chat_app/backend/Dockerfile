@@ -1,20 +1,21 @@
-FROM tiangolo/uvicorn-gunicorn-fastapi:latest
+FROM python:3.9
 
 ENV LANG C.UTF-8
 ENV TZ Asia/Tokyo
 ENV PYTHONPATH=/
 
-# pip installs
-COPY ./app /app
 COPY ./requirements.txt requirements.txt
-
 RUN /usr/local/bin/python -m pip install --no-cache-dir --upgrade pip &&\
-    pip install --no-cache-dir -r requirements.txt &&\
-    apt-get clean
+    pip install --no-cache-dir -r requirements.txt
 
-# 開発用
+COPY ./gunicorn_conf.py /gunicorn_conf.py
+
 COPY ./start.sh /start.sh
-RUN chmod +x /start.sh
+COPY ./start-reload.sh /start-reload.sh
+RUN chmod +x /start.sh &&\
+    chmod +x /start-reload.sh
+
+COPY ./app /app
 
 WORKDIR /app
 
