@@ -1,0 +1,22 @@
+services:
+  backend:
+    depends_on:
+      - db
+    restart: always
+    build:
+      context: ./backend
+    ports:
+      - 8080:80
+    volumes:
+      - ./backend/app:/app
+
+  db:
+    image: mariadb:latest
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: root_password
+      MARIADB_USER: mariadb
+      MARIADB_PASSWORD: secret
+      MARIADB_DATABASE: myjchatapp
+    ports:
+      - 3306:3306

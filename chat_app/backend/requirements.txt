@@ -1,0 +1,10 @@
+fastapi[all]
+
+tenacity
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+pymysql
+SQLAlchemy
+SQLAlchemy_Utils
