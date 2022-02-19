@@ -47,6 +47,10 @@ $ docker --version
 $ docker-compose -verison
 ```
 
+出力例
+
+![](https://github.com/marutaku/docker-fastapi-mysql-app/raw/master/docs/images/version.png)
+
 ## Windows Updateが必要な場合
 
 1. [Windowsダウンロードのページ](https://www.microsoft.com/ja-jp/software-download/windows10IS://www.microsoft.com/ja-jp/software-download/windows10)に進み，下記のボタンからダウンロードする
