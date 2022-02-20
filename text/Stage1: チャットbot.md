@@ -63,7 +63,7 @@ async def hello():
 
 ```
 
-ブラウザで`http://localhost:8000/hello`をアクセスしてみると
+ブラウザで`http://localhost:8080/hello`をアクセスしてみると
 
 ![20220220003907](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220220003907.png)
 
