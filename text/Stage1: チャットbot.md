@@ -2,7 +2,7 @@
 
 最初はFastAPIの紹介を兼ねて、簡単に外部apiを叩いてチャットbotを作っていきたいと思います。
 
-こんな仕様になります。
+このような仕様になります。
 
 ### 仕様
 - リクエストを受けて、さらにリクルートという会社が提供しているAPIにリクエストを送信する
@@ -24,7 +24,7 @@
 
 ディレクトリ`chat_app/backend/app/`の下に`__init__.py`と`main.py`というファイルがあると思います。
 
-`main.py`の中身を確認してみると、こんな感じです。
+`main.py`の中身を確認してみると、このようになっています。
 
 ```python
 from fastapi import FastAPI
@@ -43,7 +43,7 @@ async def root():
 
 リクエスト受けたら、`root`という関数を呼び出して、`{'message': 'Hello World'}`というJSONを返しています。
 
-では、少しコードを追加しましましょう！
+では、少しコードを追加しましょう！
 
 `main.py`をこのように編集します。
 ```python
@@ -67,15 +67,15 @@ async def hello():
 
 ![20220220003907](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220220003907.png)
 
-このようなメッセージが表示するようになりました。
+このようなメッセージが表示されるようになりました。
 
 ## リクルートAPIの使い方を確認してみよう
 
-リクエストAPIの[公式ページ](https://a3rt.recruit.co.jp/product/talkAPI/)にアクセスしてみると、こんな紹介を乗っています。
+リクエストAPIの[公式ページ](https://a3rt.recruit.co.jp/product/talkAPI/)にアクセスしてみると、このように説明されています。
 
 >Talk APIはChatbotを作成するためのAPIです。 Recurrent Neural Network(LSTM)を用いた入力文からの応答文生成による日常会話応答機能を提供します。 Talk APIを活用したChatbotによって様々なアプリケーション上でユーザとの対話を自動化し、 どのようなタイミングにおいても即座にユーザからの問いかけに対して応答することができます。
 
-機能はこの通りですね、リクエストを送ってみたらいい感じの返事はが返してくれるので、それでチャットbotを作ってみましょう。
+機能はこの通りですね。リクエストを送ってみたらいい感じの返事はが返してくれるので、それでチャットbotを作ってみましょう。
 
 仕様を確認して、要点だけまとめると
 - URL
@@ -125,7 +125,7 @@ from app import config  # さっきのAPI KEYをインポートしておく
 
 app = FastAPI()
 
-# CORSの設定を行なっています
+# CORSの設定を行っています
 # 今回これはおまじないだと思ってください
 app.add_middleware(
     CORSMiddleware,
@@ -140,16 +140,16 @@ app.add_middleware(
 async def get_talk(query: str = Body(..., embed=True)):
 
     api_url = 'https://api.a3rt.recruit.co.jp/talk/v1/smalltalk'
-    # form-data形式だと、このように記述になります
+    # form-data形式だと、このような記述になります
     form = {
-        'apikey': (None, config.RECRUIT_API_KEY),  # こんなふうにAPI KEYを使います
+        'apikey': (None, config.RECRUIT_API_KEY),  # このようにAPI KEYを使います
         'query': (None, query),
     }
 
     # postでリクエストを送ります
     res = requests.post(api_url, files=form)
 
-    # レスポンスをJSONにdecodeして、そもまま返します
+    # レスポンスをJSONにdecodeして、そのまま返します
     res_json = res.json()
 
     return res_json
@@ -168,7 +168,7 @@ async def hello():
 
 最初のCORSに関しては、その通りにコピペすればいいと思います。
 
-詳しくは[ここ](https://developer.mozilla.org/ja/docs/Web/HTTP/CORS)を参照してもいいですが、多分難しくてわからないと思います。今はわからなくても大丈夫です。
+詳しくは[ここ](https://developer.mozilla.org/ja/docs/Web/HTTP/CORS)を参照しても良いですが、理解するのは少々難しいです。今はわからなくても大丈夫です。
 
 ~~どうせ今後CORSで苦しめられる可能性大なので今に急がなくでいい~~
 
@@ -190,7 +190,7 @@ FastAPIでPOSTリクエストのパラメータを指定する場合、関数の
 
 ## 確認してみよう
 
-ブラウザで`http://localhost:8080/docs`にアクセスしてみると、こんなページが表示されます。
+ブラウザで`http://localhost:8080/docs`にアクセスしてみると、このようなページが表示されます。
 
 ![20220220015438](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220220015438.png)
 
@@ -217,6 +217,6 @@ FastAPIでPOSTリクエストのパラメータを指定する場合、関数の
 }
 ```
 
-この部分、いい感じな返事か帰ってきましたね。素晴らしい。
+この部分、良い感じの返事が返ってきましたね。素晴らしい。
 
 これでStage1のバックエンドのパートは終了です。お疲れ様でした、次はフロントエンドを作ってみましょう。
