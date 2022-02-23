@@ -46,4 +46,4 @@ $ docker-compose -verison
 
 <img width="600" alt="cmd.png" src="https://github.com/marutaku/docker-fastapi-mysql-app/raw/master/docs/images/version.png">
 
-6. 再起動が完了したら[元の手順](https://page-3cfba.web.app/course/docker#Docker%E3%81%AE%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89)に戻る
+再起動が完了したら[元の手順](https://page-3cfba.web.app/course/docker)に戻る

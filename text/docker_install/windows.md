@@ -80,4 +80,4 @@ $ docker-compose -verison
 
 ![](https://github.com/marutaku/docker-fastapi-mysql-app/raw/master/docs/images/linux_update_download_page.png)
 
-6. 再起動が完了したら[元の手順](#Dockerのダウンロード)に戻る
+再起動が完了したら[元の手順](https://page-3cfba.web.app/course/docker)に戻る
