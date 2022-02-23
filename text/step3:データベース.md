@@ -433,6 +433,8 @@ if __name__ == "__main__":
 
 確認できたら、以下のコマンドでバックエンドコンテンの内部に`init_db.py`を実行しましょう。
 
+コンテナ名が違う場合は`chat_app-backend-1`のところを対応するものに変えてね。
+
 ```bash
 docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
 ```
