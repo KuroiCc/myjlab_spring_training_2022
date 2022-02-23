@@ -329,3 +329,598 @@ def get_db(request: Request):
 
 ```
 
+これでDBに接続するための準備ができました。
+
+## DB：modelの作成
+
+次に、[設計](#設計)で決めたテーブルを実装していきましょう。
+
+`backend/app/db/`に`models.py`というファイルを作って、このように書きます。
+
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+
+from app.db.base import Base
+'''
+Columnのパラメータの説明
+
+primary_key: Trueは主キー
+autoincrement: Trueは自動インクリメント
+nullable: TrueはNULL許可する, Falseは不許可
+unique: True重複禁止
+'''
+
+
+class Users(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(256), nullable=False, unique=True)
+    password = Column(String(256), nullable=False)
+
+
+class Friends(Base):
+    __tablename__ = 'friends'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+    friend_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+
+
+class Messages(Base):
+    __tablename__ = 'messages'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    datetime = Column(DateTime, nullable=False)
+    sender_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+    receiver_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+    message = Column(String(512), nullable=False)
+
+```
+
+モデルの実装ができたら、dbに接続して、テーブルを作成しましょう。ついでにデータも挿入してみましょう。
+
+`backend/app/db/`に`init_db.py`というファイルを作って、このように書きます。
+
+```python
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from app.db.base import Base, engine, session
+from app.db import models
+
+
+# テーブル作成の関数
+def create_tables(base, engine: Engine) -> None:
+    base.metadata.create_all(bind=engine)
+
+
+if __name__ == "__main__":
+    create_tables(Base, engine)
+
+    # demoデータをDBに挿入する
+    db_session: Session = session()
+    user_in = models.Users(username='test_user', password='test_password')
+    db_session.add(user_in)
+    db_session.commit()
+    # sessionのcloseは忘れずに
+    db_session.close()
+    '''
+    以下のコマンドでdemoデータを挿入
+    docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
+
+    以下のコマンドでDBの中身を確認できる
+    docker exec -it chat_app-db-1 mysql --database=myjchatapp --user=mariadb --password=secret
+    show tables;
+    select * from users;
+    '''
+
+```
+
+できたら、まずはdockerの環境を確認してみよう！
+
+`docker ps`、このコマンドで実行中のコンテナを確認します。  
+
+![20220223175313](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223175313.png)
+
+手順通りの行えば、最後に`NAMES`の列に`chat_app-backend-1`と`chap_app-db-1`いう二つのコンテナがあるはずです。
+
+`chat_app-backend-1`がバックエンドのコンテナ
+
+`chap_app-db-1`がデータベースのコンテナ
+
+違う場合は、それぞれの`NAMES`を覚えておきましょう。
+
+確認できたら、以下のコマンドでバックエンドコンテンの内部に`init_db.py`を実行しましょう。
+
+```bash
+docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
+```
+
+実行してみると、
+
+![20220223181747](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223181747.png)
+
+このような出力が出ると思います。
+
+これでDBにテーブルを作成したので、それを確認してみましょう。
+
+以下のコマンドでデータベースコンテナの内部に入ります。
+
+```bash
+docker exec -it chat_app-db-1 mysql --database=myjchatapp --user=mariadb --password=secret
+```
+
+次に`show tables;`と入力して実行してみると、
+
+![20220223182848](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223182848.png)
+
+テーブルが、できています！
+
+ではデータの方は？`select * from users;`このコマンドで確認しましょう！
+
+![20220223183136](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223183136.png)
+
+これもできています！素晴らしい！
+
+## パスワードの暗号化
+
+
+前の章で無事にデータを挿入したものの一つ問題がございます。step1ではパスワードとかは平文で書くべきではないと言いました。これはDBの内部においても同じです。
+
+だから、パスワードを暗号化してDBに入れましょう。
+
+今回はFastAPI公式推奨のPassLibというライブラリでパスワードのハッシュ処理をします。
+
+`backend/app/`に`security.py`というファイルを作って、このように書きます。
+
+```python
+from passlib.context import CryptContext
+
+# ハッシュ化のアルゴリズムを指定
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+```
+
+次に`backend/app/db/models.py`の`Users`クラスを書き足します。
+
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+
+from app.db.base import Base
+from app.security import get_password_hash  # new
+
+...
+
+class Users(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(256), nullable=False, unique=True)
+    password = Column(String(256), nullable=False)
+
+    # passwordをハッシュ化して保存する
+    def __init__(self, *, id: int = None, username: str, password: str) -> None:  # new
+        super().__init__(id=id, username=username, password=get_password_hash(password))  # new
+
+...
+```
+
+これで、データを入れる時自動にハッシュ化されます。
+
+
+## CRUDモジュール
+
+さて、新しくデータを入れてみたいですが、その前にCRUDモジュールを作りましょう。
+
+CRUDって？Create, Read, Update, Deleteの略です。
+
+DBの対する操作はこの4つにまとめることができます。
+
+では、CRUDモジュールって？
+
+前の章で行っているuserの挿入は、DBを **"直接"** 操作しています。
+
+なので、**"危険な"** 操作をしても、DBはそのまま受け付けてしまう場合があります。
+
+"危険な"操作の定義は仕様によりますが例えば、
+
+- 自分おidを友人として登録する
+- 銀行などで振込の場合、振込元-100、振込先+200
+
+などなど...
+
+DBも挿入データに制限をかけたりすることができるが、カバーしきれない場合もあります。
+
+ですので、DBに"直接"操作するではなくて、必要な操作をとあるモジュールにまとめて、そのモジュールに通じてのみDBを操作すればミスの削減につながります。（ここはCRUDモジュールと呼んでいますが、現場によっては全く違う呼び方する可能性もあるので、そこだけ気をつけましょう。）
+
+ほかにもコードの記述量が減ったりとか、メリットはたくさんなあるので、CRUDモジュールを作りましょう。
+
+`backend/app/db/`に`crud.py`というファイルを作って、このように書きます。
+
+```python
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.db.models import Users
+
+
+class CRUDUser():
+    # コンストラクタでに自信のテーブルmodelを指定
+    def __init__(self, model: Users) -> None:
+        self.model = model
+
+    def create(self, db_session: Session, *, obj_in: Users) -> Users:
+        db_session.add(obj_in)
+        db_session.commit()
+        db_session.refresh(obj_in)
+        return obj_in
+
+    def get(self, db_session: Session, id: int) -> Optional[Users]:
+        return db_session.query(self.model).filter(self.model.id == id).first()
+
+
+# 実際に使用するインスタンス
+user = CRUDUser(Users)
+
+```
+
+できたらデータを挿入してみましょう。実はdemoデータも少し用意しましたので、それを挿入しましょう。
+
+`backend/app/db/`に`demo_data.json`というファイルを作って、デモデータの内容をコピペしてください。
+
+量が多いので、読みやすくするために、デモデータはこの[ページの最後](#デモデータ)に置いています。
+
+次は、`backend/app/db/init_db.py`にを変更しましょう。
+
+```python
+import json  # new
+from typing import List  # new
+
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from app.db.base import Base, engine, session
+from app.db import models
+from app.db import crud  # new
+
+
+def create_tables(base, engine: Engine) -> None:
+    base.metadata.create_all(bind=engine)
+
+
+# new
+# デモデータを挿入するための関数
+def insert_demo_users(session: Session, users: List) -> None:
+    for user in users:
+        user_in = models.Users(**user)
+        crud.user.create(session, obj_in=user_in)
+
+
+if __name__ == "__main__":
+    create_tables(Base, engine)
+
+    # new
+    # demoデータを読み込む
+    with open("/app/db/demo_data.json", "r") as fp:
+        demo_data = json.load(fp)
+
+    # demoデータをDBに挿入する
+    # withを使えば、自動的にcloseしてくれる
+    with session() as db_session:  # new
+        insert_demo_users(db_session, demo_data['users'])  # newÏ
+    '''
+    以下のコマンドでdemoデータを挿入
+    docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
+
+    以下のコマンドでDBの中身を確認できる
+    docker exec -it chat_app-db-1 mysql --database=myjchatapp --user=mariadb --password=secret
+    show tables;
+    select * from users;
+    '''
+
+```
+
+`insert_demo_users`引数の書き方`**user`は`dict`をアンパックしています。詳しくは[この記事](https://tksmml.hatenablog.com/entry/2019/05/02/000000)を参照してください。
+
+`dict`は知らないが、`tuple`のアンパックプロ基礎で教えていると思います。
+
+ではもう一度このコマンドを実行します。
+```bash
+docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
+```
+
+そしたら以下のコマンドでDBの中身を確認できます。
+
+```bash
+docker exec -it chat_app-db-1 mysql --database=myjchatapp --user=mariadb --password=secret
+select * from users;
+```
+
+![20220223234837](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223234837.png)
+
+ってってでれ、っでっきた！ちゃんとパスワードも暗号化されています！
+
+ここまでできたあなた、そうそこのあなた！天才かもしれません！
+
+ここでデータベースの作成完了します！おつかれさまでした！
+
+
+# デモデータ
+
+[ここから](#CRUDモジュール)戻れます。
+
+```json
+{
+    "users": [
+        {
+            "id": 101,
+            "username": "{ここ自分の名前に変えてね}",
+            "password": "{好きなパスワードを入れてね}"
+        },
+        {
+            "id": 102,
+            "username": "sei",
+            "password": "sei1000"
+        },
+        {
+            "id": 103,
+            "username": "ren",
+            "password": "ren1000"
+        },
+        {
+            "id": 104,
+            "username": "ami",
+            "password": "ami1000"
+        },
+        {
+            "id": 105,
+            "username": "yuzuka",
+            "password": "yuzuka1000"
+        },
+        {
+            "id": 106,
+            "username": "ozeki",
+            "password": "ozeki1000"
+        },
+        {
+            "id": 107,
+            "username": "MIYAJI",
+            "password": "MIYAJI1000"
+        }
+    ],
+    "friends": [
+        {
+            "user_id": 101,
+            "friend_id": 102
+        },
+        {
+            "user_id": 101,
+            "friend_id": 103
+        },
+        {
+            "user_id": 102,
+            "friend_id": 103
+        },
+        {
+            "user_id": 103,
+            "friend_id": 104
+        },
+        {
+            "user_id": 102,
+            "friend_id": 104
+        },
+        {
+            "user_id": 101,
+            "friend_id": 105
+        },
+        {
+            "user_id": 102,
+            "friend_id": 106
+        },
+        {
+            "user_id": 104,
+            "friend_id": 107
+        }
+    ],
+    "messages": [
+        {
+            "datetime": "2021-03-23T20:40:26",
+            "sender_id": 101,
+            "receiver_id": 102,
+            "message": "こんにちは"
+        },
+        {
+            "datetime": "2021-11-13T04:19:47",
+            "sender_id": 101,
+            "receiver_id": 103,
+            "message": "おやすみなさい"
+        },
+        {
+            "datetime": "2021-11-24T12:17:12",
+            "sender_id": 102,
+            "receiver_id": 103,
+            "message": "遊ぼうよ"
+        },
+        {
+            "datetime": "2021-07-02T01:32:48",
+            "sender_id": 103,
+            "receiver_id": 104,
+            "message": "お腹すいた"
+        },
+        {
+            "datetime": "2021-07-05T10:52:33",
+            "sender_id": 102,
+            "receiver_id": 104,
+            "message": "ありがとう"
+        },
+        {
+            "datetime": "2021-09-08T10:18:41",
+            "sender_id": 101,
+            "receiver_id": 105,
+            "message": "今日はいい天気だね"
+        },
+        {
+            "datetime": "2021-03-02T01:52:52",
+            "sender_id": 102,
+            "receiver_id": 106,
+            "message": "ごめんなさい"
+        }
+    ],
+    "groups": [
+        {
+            "id": 101,
+            "name": "myjlab-1"
+        },
+        {
+            "id": 102,
+            "name": "myjlab-2"
+        },
+        {
+            "id": 103,
+            "name": "myjlab-3"
+        },
+        {
+            "id": 104,
+            "name": "myjlab-4"
+        },
+        {
+            "id": 105,
+            "name": "rabbit"
+        },
+        {
+            "id": 106,
+            "name": "gorilla"
+        },
+        {
+            "id": 107,
+            "name": "tomato"
+        }
+    ],
+    "groups_members": [
+        {
+            "group_id": 101,
+            "user_id": 101
+        },
+        {
+            "group_id": 101,
+            "user_id": 102
+        },
+        {
+            "group_id": 101,
+            "user_id": 103
+        },
+        {
+            "group_id": 101,
+            "user_id": 104
+        },
+        {
+            "group_id": 102,
+            "user_id": 105
+        },
+        {
+            "group_id": 102,
+            "user_id": 106
+        },
+        {
+            "group_id": 103,
+            "user_id": 107
+        },
+        {
+            "group_id": 104,
+            "user_id": 101
+        },
+        {
+            "group_id": 105,
+            "user_id": 102
+        },
+        {
+            "group_id": 106,
+            "user_id": 103
+        },
+        {
+            "group_id": 107,
+            "user_id": 104
+        },
+        {
+            "group_id": 103,
+            "user_id": 105
+        },
+        {
+            "group_id": 104,
+            "user_id": 102
+        },
+        {
+            "group_id": 105,
+            "user_id": 104
+        },
+        {
+            "group_id": 106,
+            "user_id": 104
+        },
+        {
+            "group_id": 107,
+            "user_id": 102
+        }
+    ],
+    "groups_messages": [
+        {
+            "datetime": "2021-03-23T20:40:26",
+            "group_id": 101,
+            "sender_id": 101,
+            "message": "ありがとう"
+        },
+        {
+            "datetime": "2021-11-13T04:19:47",
+            "group_id": 101,
+            "sender_id": 102,
+            "message": "おはよう"
+        },
+        {
+            "datetime": "2021-11-24T12:17:12",
+            "group_id": 102,
+            "sender_id": 105,
+            "message": "ありがとう"
+        },
+        {
+            "datetime": "2021-07-02T01:32:48",
+            "group_id": 103,
+            "sender_id": 105,
+            "message": "こんにちは"
+        },
+        {
+            "datetime": "2021-07-05T10:52:33",
+            "group_id": 104,
+            "sender_id": 102,
+            "message": "猫が好きです"
+        },
+        {
+            "datetime": "2021-09-08T10:18:41",
+            "group_id": 105,
+            "sender_id": 104,
+            "message": "猫は可愛いですね"
+        },
+        {
+            "datetime": "2021-03-02T01:52:52",
+            "group_id": 106,
+            "sender_id": 104,
+            "message": "今日は寒いですね"
+        },
+        {
+            "datetime": "2021-10-10T09:21:33",
+            "group_id": 107,
+            "sender_id": 102,
+            "message": "野球は面白いですね"
+        }
+    ]
+}
+```
