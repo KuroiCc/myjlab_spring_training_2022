@@ -329,3 +329,211 @@ def get_db(request: Request):
 
 ```
 
+これでDBに接続するための準備ができました。
+
+## DB：modelの作成
+
+次に、[設計](#設計)で決めたテーブルを実装していきましょう。
+
+`backend/app/db/`に`models.py`というファイルを作って、このように書きます。
+
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+
+from app.db.base import Base
+'''
+Columnのパラメータの説明
+
+primary_key: Trueは主キー
+autoincrement: Trueは自動インクリメント
+nullable: TrueはNULL許可する, Falseは不許可
+unique: True重複禁止
+'''
+
+
+class Users(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(256), nullable=False, unique=True)
+    password = Column(String(256), nullable=False)
+
+
+class Friends(Base):
+    __tablename__ = 'friends'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+    friend_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+
+
+class Messages(Base):
+    __tablename__ = 'messages'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    datetime = Column(DateTime, nullable=False)
+    sender_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+    receiver_id = Column(Integer, ForeignKey('users.id'), nullable=False, primary_key=True)
+    message = Column(String(512), nullable=False)
+
+```
+
+モデルの実装ができたら、dbに接続して、テーブルを作成しましょう。ついでにデータも挿入してみましょう。
+
+`backend/app/db/`に`init_db.py`というファイルを作って、このように書きます。
+
+```python
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from app.db.base import Base, engine, session
+from app.db import models
+
+
+# テーブル作成の関数
+def create_tables(base, engine: Engine) -> None:
+    base.metadata.create_all(bind=engine)
+
+
+if __name__ == "__main__":
+    create_tables(Base, engine)
+
+    # demoデータをDBに挿入する
+    db_session: Session = session()
+    user_in = models.Users(username='test_user', password='test_password')
+    db_session.add(user_in)
+    db_session.commit()
+    # sessionのcloseは忘れずに
+    db_session.close()
+    '''
+    以下のコマンドでdemoデータを挿入
+    docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
+
+    以下のコマンドでDBの中身を確認できる
+    docker exec -it chat_app-db-1 mysql --database=myjchatapp --user=mariadb --password=secret
+    show tables;
+    select * from users;
+    '''
+
+```
+
+できたら、まずはdockerの環境を確認してみよう！
+
+`docker ps`、このコマンドで実行中のコンテナを確認します。  
+
+![20220223175313](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223175313.png)
+
+手順通りの行えば、最後に`NAMES`の列に`chat_app-backend-1`と`chap_app-db-1`いう二つのコンテナがあるはずです。
+
+`chat_app-backend-1`がバックエンドのコンテナ
+
+`chap_app-db-1`がデータベースのコンテナ
+
+違う場合は、それぞれの`NAMES`を覚えておきましょう。
+
+確認できたら、以下のコマンドでバックエンドコンテンの内部に`init_db.py`を実行しましょう。
+
+```bash
+docker exec -it chat_app-backend-1 python3 /app/db/init_db.py
+```
+
+実行してみると、
+
+![20220223181747](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223181747.png)
+
+このような出力が出ると思います。
+
+これでDBにテーブルを作成したので、それを確認してみましょう。
+
+以下のコマンドでデータベースコンテナの内部に入ります。
+
+```bash
+docker exec -it chat_app-db-1 mysql --database=myjchatapp --user=mariadb --password=secret
+```
+
+次に`show tables;`と入力して実行してみると、
+
+![20220223182848](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223182848.png)
+
+テーブルが、できています！
+
+ではデータの方は？`select * from users;`このコマンドで確認しましょう！
+
+![20220223183136](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220223183136.png)
+
+これもできています！素晴らしい！
+
+## パスワードの暗号化
+
+
+前の章で無事にデータを挿入したものの一つ問題がございます。step1ではパスワードとかは平文で書くべきではないと言いました。これはDBの内部においても同じです。
+
+だから、パスワードを暗号化してDBに入れましょう。
+
+今回はFastAPI公式推奨のPassLibというライブラリでパスワードのハッシュ処理をします。
+
+`backend/app/`に`security.py`というファイルを作って、このように書きます。
+
+```python
+from passlib.context import CryptContext
+
+# ハッシュ化のアルゴリズムを指定
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+```
+
+次に`backend/app/db/models.py`の`Users`クラスを書き足します。
+
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+
+from app.db.base import Base
+from app.security import get_password_hash  # new
+
+...
+
+class Users(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(256), nullable=False, unique=True)
+    password = Column(String(256), nullable=False)
+
+    # passwordをハッシュ化して保存する
+    def __init__(self, *, id: int = None, username: str, password: str) -> None:  # new
+        super().__init__(id=id, username=username, password=get_password_hash(password))  # new
+
+...
+```
+
+これで、データを入れる時自動にハッシュ化されます。
+
+
+## CRUDクラス
+
+さて、新しくデータを入れてみたいですが、その前にCRUDクラスを作りましょう。
+
+CRUDって？Create, Read, Update, Deleteの略です。
+
+データベースの対する操作はこの4つにまとめることができます。
+
+では、CRUDクラスって？
+
+前の章で行っているuserの挿入は、DBを**"直接"**操作しています。
+
+なので、"危険な"操作をしても、DBはそのまま受け付けてしまう場合があります。
+
+"危険な"操作の定義は仕様によりますが例えば、
+
+- 存在しないユーザにメッセージを送る
+- 銀行などで振込の場合、振込元-100、振込先+200
+
+など、DBが
