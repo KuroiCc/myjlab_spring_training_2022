@@ -222,3 +222,139 @@ FastAPIでは
 これがFastAPI、というよりwebフレームワークを使う大きなメリットです。
 
 ## 認証
+
+さっき作ったAPIは特定なユーザ返せないし、誰でもアクセスできてしまうので、認証をつけたいと思います。
+
+今回使うのはBasic認証というものです。
+
+現在主流認証方式はOAuth2と呼ばれて、tokenとかを使っている認証です。Basic認証今後一生使わないと思いますが、最も基本な認証なので今回はこれで勘弁してください。
+
+Basic認証もOAuth2もFastAPIはサポートしています。
+
+認証の原理については、今は`Authorization`というヘッダーにkeyを入れて、そのkeyで認証するという認識でいいと思います。
+
+Basic認証のキーの原理はフロントがやってくれるかもしれないので、ここでは説明を省きます。
+
+さて、実装していこうと思うですが、usernameとpasswordを入るのか普通ですので、最初はusernameでuserを取り出せるcrudを作ります。2行で終わります。
+
+`app/db/crud.py`に書き込みます。Ï
+```python
+...
+class CRUDUser():
+    # コンストラクタでに自信のテーブルmodelを指定
+    def __init__(self, model: Users) -> None:
+        self.model = model
+
+    def create(self, db_session: Session, *, obj_in: Users) -> Users:
+        db_session.add(obj_in)
+        db_session.commit()
+        db_session.refresh(obj_in)
+        return obj_in
+
+    def get(self, db_session: Session, id: int) -> Optional[Users]:
+        return db_session.query(self.model).filter(self.model.id == id).first()
+
+    # ここからnew
+    def get_by_username(self, db_session: Session, username: str) -> Optional[Users]:
+        return db_session.query(self.model).filter(self.model.username == username).first()
+...
+```
+
+認証は基本的にどのAPIにもつけるので、最初から関数作りたいと思います。
+
+`app/security.py`にこのように書き足す。
+
+```python
+from fastapi import HTTPException, status, Depends  # new
+from fastapi.security import HTTPBasic, HTTPBasicCredentials  # new
+from sqlalchemy.orm import Session  # new
+from passlib.context import CryptContext
+
+from app.db.base import get_db  # new
+
+security = HTTPBasic()  # new
+# ハッシュ化のアルゴリズムを指定
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+# new ここから
+# credentialsのところはヘッダーのAuthorizationからkeyをusernameとpasswordに直しています。
+def auth(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
+    from app.db import crud
+
+    username = credentials.username
+    password = credentials.password
+
+    user = crud.user.get_by_username(db, username)
+
+    # 該当ユーザが存在しない、あるいはパスワードが一致しない場合はエラーを返す
+    if user is None or not verify_password(password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='ユーザ名かパスワードが間違っています',
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+    return user
+
+```
+
+次はloginのエンドポイントを直します。
+
+`app/endpoint/login.py`にこのように書きます。
+
+```python
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.db import crud
+from app.db.base import get_db
+from app.db.models import Users as DBUser  # new
+from app.endpoint.schemas import User
+from app.security import auth  # new
+
+router = APIRouter()
+
+
+# new ここから
+@router.get('', response_model=User)
+def login(
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(auth),
+):
+
+    return current_user
+
+```
+
+`auth`という関数はAuthorizationからkeyをusernameとpasswordに直して、その内容をDBに照合し、正しい場合はユーザを返す、そうでない場合はHTTPエラーを返す関数です。
+
+前に説明した通り`Depends`はうけた関数を実装して値を代入してくれるものなので、`auth`関数を通せるならcurrent_userに正しいユーザが入るはずなのでそもまま返します。
+
+では試してみよう。`http://localhost:8080/docs`にアクセスすると。右上に認証ボタンが現れると思います。
+
+![20220227175022](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220227175022.png)
+
+そのボタンと押して、usernameとpasswordを入れて、`/login`エンドポイントを試してみると
+
+![20220227175349](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220227175349.png)
+
+こんなふうにさっき入れたuser情報が返ってくると思います。
+
+さらに、今回のようにbasic認証+GETメソッドの場合、`http://localhost:8080/login`にブラウザーでアクセスすると、登録のポップアップが出ると思います。そこにusernameとpasswordを入れると、同じようにそのuserの情報が返ってきます。
+
+(スクショがチャイ語ですみません、みなさんは日本語で出ると思います。)
+
+![20220227175840](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220227175840.png)
+
+![20220227175909](https://raw.githubusercontent.com/KuroiCc/kuroi-image-host/main/images/20220227175909.png)
+
+今回はちがうuserで試してみました。正しい情報が返ってきましたね、素晴らしい！
